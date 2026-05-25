@@ -7,12 +7,18 @@ import (
 	"strings"
 )
 
+var userService = UserService{
+	repo: InMemoryUserRepository{},
+}
+
 func usersHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "application/json")
 
-		err := json.NewEncoder(w).Encode(users)
+		userList := userService.ListUsers()
+
+		err := json.NewEncoder(w).Encode(userList)
 		if err != nil {
 			http.Error(w, "failed to encode users", http.StatusInternalServerError)
 			return
@@ -32,12 +38,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		newUser := User{
-			ID:   len(users) + 1,
-			Name: req.Name,
-		}
-
-		users = append(users, newUser)
+		newUser := userService.CreateUser(req.Name)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -68,21 +69,19 @@ func userByIDHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		for _, user := range users {
-			if user.ID == id {
-				w.Header().Set("Content-Type", "application/json")
-
-				err := json.NewEncoder(w).Encode(user)
-				if err != nil {
-					http.Error(w, "failed to encode user", http.StatusInternalServerError)
-					return
-				}
-
-				return
-			}
+		user, err := userService.GetUserByID(id)
+		if err != nil {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
 		}
 
-		http.Error(w, "user not found", http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+
+		err = json.NewEncoder(w).Encode(user)
+		if err != nil {
+			http.Error(w, "failed to encode user", http.StatusInternalServerError)
+			return
+		}
 
 	case http.MethodPut:
 		var req UpdateUserRequest
@@ -98,34 +97,28 @@ func userByIDHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		for i := range users {
-			if users[i].ID == id {
-				users[i].Name = req.Name
-
-				w.Header().Set("Content-Type", "application/json")
-
-				err := json.NewEncoder(w).Encode(users[i])
-				if err != nil {
-					http.Error(w, "failed to encode user", http.StatusInternalServerError)
-					return
-				}
-
-				return
-			}
+		updateUser, err := userService.UpdateUser(id, req.Name)
+		if err != nil {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
 		}
 
-		http.Error(w, "user not found", http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+
+		err = json.NewEncoder(w).Encode(updateUser)
+		if err != nil {
+			http.Error(w, "failed to encode user", http.StatusInternalServerError)
+			return
+		}
 
 	case http.MethodDelete:
-		for i := range users {
-			if users[i].ID == id {
-				users = append(users[:i], users[i+1:]...)
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
+		err := userService.DeleteUser(id)
+		if err != nil {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
 		}
 
-		http.Error(w, "user not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNoContent)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
